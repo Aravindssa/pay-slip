@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payroll Payslip Manager</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+        .header { background: linear-gradient(135deg, #1e3a5f, #2d5a87); color: white; padding: 20px 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: relative; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header p { opacity: 0.8; margin-top: 4px; font-size: 14px; }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px 20px; }
+
+        .upload-section { background: white; border-radius: 12px; padding: 40px; text-align: center; border: 2px dashed #cbd5e1; margin-bottom: 30px; transition: all 0.3s; }
+        .upload-section:hover { border-color: #2d5a87; background: #f8fafc; }
+        .upload-section.dragover { border-color: #2d5a87; background: #eff6ff; }
+        .upload-icon { font-size: 48px; margin-bottom: 15px; }
+        .upload-section h2 { color: #334155; margin-bottom: 8px; }
+        .upload-section p { color: #64748b; margin-bottom: 20px; }
+
+        .btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: #2d5a87; color: white; }
+        .btn-primary:hover { background: #1e3a5f; transform: translateY(-1px); }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:hover { background: #047857; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-outline { background: white; color: #2d5a87; border: 1px solid #2d5a87; }
+        .btn-outline:hover { background: #eff6ff; }
+        .btn-sm { padding: 6px 14px; font-size: 12px; }
+
+        .file-input { display: none; }
+
+        .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px; }
+        .stat-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card .label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 24px; font-weight: 700; color: #1e293b; margin-top: 4px; }
+        .stat-card .value.blue { color: #2d5a87; }
+        .stat-card .value.green { color: #059669; }
+
+        .controls { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .search-box { flex: 1; min-width: 250px; padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; }
+        .search-box:focus { border-color: #2d5a87; box-shadow: 0 0 0 3px rgba(45,90,135,0.1); }
+
+        .table-wrapper { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f8fafc; padding: 12px 16px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; position: sticky; top: 0; }
+        td { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #334155; white-space: nowrap; }
+        tr:hover td { background: #f8fafc; }
+        .amount { text-align: right; font-family: 'Courier New', monospace; }
+        .actions-col { display: flex; gap: 6px; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 16px; width: 90%; max-width: 700px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h3 { font-size: 18px; color: #1e293b; }
+        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #64748b; padding: 4px 8px; border-radius: 4px; }
+        .modal-close:hover { background: #f1f5f9; }
+        .modal-body { padding: 24px; }
+
+        .payslip { border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; }
+        .payslip-header { text-align: center; border-bottom: 2px solid #1e3a5f; padding-bottom: 16px; margin-bottom: 16px; }
+        .payslip-header h2 { color: #1e3a5f; font-size: 20px; margin-top: 8px; }
+        .payslip-header p { color: #64748b; font-size: 13px; margin-top: 4px; }
+        .company-logo { max-height: 60px; max-width: 200px; margin-bottom: 4px; }
+        .company-address { color: #475569; font-size: 12px; }
+        .company-contact { color: #475569; font-size: 12px; }
+        .company-reg { color: #64748b; font-size: 11px; margin-top: 2px; }
+        .payslip-info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; font-size: 13px; }
+        .payslip-info .field { display: flex; gap: 8px; }
+        .payslip-info .field label { font-weight: 600; color: #475569; min-width: 100px; }
+        .payslip-info .field span { color: #1e293b; }
+        .payslip-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+        .payslip-table th, .payslip-table td { padding: 8px 12px; border: 1px solid #e2e8f0; }
+        .payslip-table th { background: #f8fafc; text-align: left; }
+        .payslip-table .total-row { font-weight: 700; background: #f0fdf4; }
+        .payslip-net { text-align: center; padding: 12px; background: #1e3a5f; color: white; border-radius: 8px; font-size: 16px; }
+        .payslip-net span { font-size: 22px; font-weight: 700; }
+
+        .send-form { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+        .send-form .form-group { margin-bottom: 16px; }
+        .send-form label { display: block; font-size: 13px; font-weight: 500; color: #475569; margin-bottom: 6px; }
+        .send-form input, .send-form textarea { width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline: none; }
+        .send-form input:focus, .send-form textarea:focus { border-color: #2d5a87; }
+        .send-form textarea { height: 80px; resize: vertical; }
+
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #059669; color: white; padding: 14px 24px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 2000; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #dc2626; }
+
+        .selection-bar { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; color: #1e3a5f; }
+        .row-selected td { background: #eff6ff !important; }
+        .row-checkbox { width: 16px; height: 16px; cursor: pointer; }
+        #selectAll { width: 16px; height: 16px; cursor: pointer; }
+
+        .hidden { display: none; }
+
+        @media (max-width: 768px) {
+            .header { padding: 16px 20px; }
+            .container { padding: 16px; }
+            .upload-section { padding: 24px; }
+            .payslip-info { grid-template-columns: 1fr; }
+            .controls { flex-direction: column; }
+            .search-box { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Payroll Payslip Manager</h1>
+        <p>Upload payroll data, view payslips, download PDFs, and send to employees</p>
+        <span id="serverStatus" style="position:absolute;right:40px;top:28px;font-size:12px;padding:4px 12px;border-radius:12px;background:rgba(255,255,255,0.15);"></span>
+    </div>
+
+    <div class="container">
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-icon">📂</div>
+            <h2>Upload Payroll Excel File</h2>
+            <p>Drag & drop your .xlsx file here or click to browse</p>
+            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls">
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Choose File</button>
+        </div>
+
+        <div id="dataSection" class="hidden">
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="label">Total Employees</div>
+                    <div class="value blue" id="totalEmployees">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Gross Pay</div>
+                    <div class="value" id="totalGross">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Deductions</div>
+                    <div class="value" style="color:#dc2626" id="totalDeductions">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Net Pay</div>
+                    <div class="value green" id="totalNet">0</div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <input type="text" class="search-box" id="searchBox" placeholder="Search by name, ID, department...">
+                <button class="btn btn-outline" onclick="downloadAllPayslips()">Download All PDFs</button>
+                <button class="btn btn-success" onclick="sendAllPayslips()">Send All Payslips</button>
+                <button class="btn btn-danger" onclick="resetData()">Clear Data</button>
+            </div>
+
+            <div class="selection-bar hidden" id="selectionBar">
+                <span id="selectedCount">0</span> employee(s) selected
+                <button class="btn btn-outline btn-sm" onclick="downloadSelectedPayslips()">Download Selected PDFs</button>
+                <button class="btn btn-success btn-sm" onclick="sendSelectedPayslips()">Send to Selected</button>
+                <button class="btn btn-danger btn-sm" onclick="clearSelection()">Clear Selection</button>
+            </div>
+
+            <div class="table-wrapper">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                                <th>Emp ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Department</th>
+                                <th>Designation</th>
+                                <th class="amount">Gross</th>
+                                <th class="amount">Deductions</th>
+                                <th class="amount">Net Pay</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="payslipModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Employee Payslip</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="sendModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Send Payslip via Email</h3>
+                <button class="modal-close" onclick="closeSendModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="sendModalBody"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let payrollData = [];
+        let headers = [];
+        let selectedEmployees = new Set();
+        let companyInfo = {
+            'Company Name': 'Company Name',
+            'Address Line 1': '',
+            'Address Line 2': '',
+            'Address Line 3': '',
+            'Phone': '',
+            'Email': '',
+            'Website': '',
+            'CIN': '',
+            'GSTIN': '',
+            'Logo URL': ''
+        };
+        let smtpConfig = {
+            'SMTP Host': '',
+            'SMTP Port': '',
+            'SMTP User': '',
+            'SMTP Password': '',
+            'Sender Name': '',
+            'Sender Email': ''
+        };
+
+        const uploadSection = document.getElementById('uploadSection');
+        const fileInput = document.getElementById('fileInput');
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            uploadSection.addEventListener(evt, e => { e.preventDefault(); uploadSection.classList.add('dragover'); });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            uploadSection.addEventListener(evt, e => { e.preventDefault(); uploadSection.classList.remove('dragover'); });
+        });
+        uploadSection.addEventListener('drop', e => { if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]); });
+        fileInput.addEventListener('change', e => { if (e.target.files.length) processFile(e.target.files[0]); });
+
+        function processFile(file) {
+            if (!file.name.match(/\.xlsx?$/i)) { showToast('Please upload a valid Excel file (.xlsx)', 'error'); return; }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const workbook = XLSX.read(e.target.result, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                if (json.length < 2) { showToast('File appears empty or invalid', 'error'); return; }
+                headers = json[0];
+                payrollData = json.slice(1).filter(row => row.length > 0 && row[0]);
+
+                // Read Company Details sheet if present
+                const companySheet = workbook.Sheets['Company Details'];
+                if (companySheet) {
+                    const companyData = XLSX.utils.sheet_to_json(companySheet, { header: 1 });
+                    companyData.forEach(row => {
+                        if (row[0] && row[1] !== undefined) {
+                            if (row[0] in companyInfo) companyInfo[row[0]] = String(row[1]);
+                            if (row[0] in smtpConfig) smtpConfig[row[0]] = String(row[1]);
+                        }
+                    });
+                }
+
+                renderData();
+                showToast('Payroll data loaded: ' + payrollData.length + ' employees');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderData() {
+            document.getElementById('uploadSection').classList.add('hidden');
+            document.getElementById('dataSection').classList.remove('hidden');
+
+            document.getElementById('totalEmployees').textContent = payrollData.length;
+            const grossIdx = headers.indexOf('Gross Earnings');
+            const dedIdx = headers.indexOf('Total Deductions');
+            const netIdx = headers.indexOf('Net Pay');
+
+            let totalGross = 0, totalDed = 0, totalNet = 0;
+            payrollData.forEach(row => {
+                totalGross += Number(row[grossIdx]) || 0;
+                totalDed += Number(row[dedIdx]) || 0;
+                totalNet += Number(row[netIdx]) || 0;
+            });
+            document.getElementById('totalGross').textContent = formatCurrency(totalGross);
+            document.getElementById('totalDeductions').textContent = formatCurrency(totalDed);
+            document.getElementById('totalNet').textContent = formatCurrency(totalNet);
+
+            renderTable(payrollData);
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            const idIdx = 0, nameIdx = 1, emailIdx = 2, deptIdx = 3, desigIdx = 4;
+            const grossIdx = headers.indexOf('Gross Earnings');
+            const dedIdx = headers.indexOf('Total Deductions');
+            const netIdx = headers.indexOf('Net Pay');
+
+            tbody.innerHTML = data.map((row, i) => {
+                const origIdx = payrollData.indexOf(row);
+                const checked = selectedEmployees.has(origIdx) ? 'checked' : '';
+                return `<tr class="${checked ? 'row-selected' : ''}">
+                    <td><input type="checkbox" class="row-checkbox" data-idx="${origIdx}" ${checked} onchange="toggleSelect(${origIdx}, this)"></td>
+                    <td>${row[idIdx] || ''}</td>
+                    <td><strong>${row[nameIdx] || ''}</strong></td>
+                    <td>${row[emailIdx] || ''}</td>
+                    <td>${row[deptIdx] || ''}</td>
+                    <td>${row[desigIdx] || ''}</td>
+                    <td class="amount">${formatCurrency(row[grossIdx])}</td>
+                    <td class="amount">${formatCurrency(row[dedIdx])}</td>
+                    <td class="amount"><strong>${formatCurrency(row[netIdx])}</strong></td>
+                    <td><div class="actions-col">
+                        <button class="btn btn-primary btn-sm" onclick="viewPayslip(${origIdx})">View</button>
+                        <button class="btn btn-outline btn-sm" onclick="downloadPayslip(${origIdx})">PDF</button>
+                        <button class="btn btn-success btn-sm" onclick="openSendModal(${origIdx})">Send</button>
+                    </div></td>
+                </tr>`;
+            }).join('');
+        }
+
+        document.getElementById('searchBox').addEventListener('input', function() {
+            const q = this.value.toLowerCase();
+            if (!q) { renderTable(payrollData); return; }
+            const filtered = payrollData.filter(row => row.some(cell => String(cell).toLowerCase().includes(q)));
+            renderTable(filtered);
+        });
+
+        function getEmployeeData(idx) {
+            const row = payrollData[idx];
+            const obj = {};
+            headers.forEach((h, i) => obj[h] = row[i] || '');
+            return obj;
+        }
+
+        function viewPayslip(idx) {
+            const emp = getEmployeeData(idx);
+            document.getElementById('modalBody').innerHTML = generatePayslipHTML(emp);
+            document.getElementById('payslipModal').classList.add('active');
+        }
+
+        function generatePayslipHTML(emp) {
+            const addr = [companyInfo['Address Line 1'], companyInfo['Address Line 2'], companyInfo['Address Line 3']].filter(Boolean).join(', ');
+            const contactParts = [];
+            if (companyInfo['Phone']) contactParts.push(`Phone: ${companyInfo['Phone']}`);
+            if (companyInfo['Email']) contactParts.push(`Email: ${companyInfo['Email']}`);
+            if (companyInfo['Website']) contactParts.push(`Web: ${companyInfo['Website']}`);
+            const regParts = [];
+            if (companyInfo['CIN']) regParts.push(`CIN: ${companyInfo['CIN']}`);
+            if (companyInfo['GSTIN']) regParts.push(`GSTIN: ${companyInfo['GSTIN']}`);
+            return `
+            <div class="payslip" id="payslipContent">
+                <div class="payslip-header">
+                    ${companyInfo['Logo URL'] ? `<img src="${companyInfo['Logo URL']}" alt="Logo" class="company-logo">` : ''}
+                    <h2>${companyInfo['Company Name'] || 'COMPANY NAME'}</h2>
+                    ${addr ? `<p class="company-address">${addr}</p>` : ''}
+                    ${contactParts.length ? `<p class="company-contact">${contactParts.join(' | ')}</p>` : ''}
+                    ${regParts.length ? `<p class="company-reg">${regParts.join(' | ')}</p>` : ''}
+                    <p style="margin-top:8px; font-weight:600; color:#1e3a5f;">Pay Slip for ${emp['Pay Period'] || 'N/A'}</p>
+                </div>
+                <div class="payslip-info">
+                    <div class="field"><label>Employee ID:</label><span>${emp['Employee ID']}</span></div>
+                    <div class="field"><label>Name:</label><span>${emp['Employee Name']}</span></div>
+                    <div class="field"><label>Department:</label><span>${emp['Department']}</span></div>
+                    <div class="field"><label>Designation:</label><span>${emp['Designation']}</span></div>
+                    <div class="field"><label>Bank A/C:</label><span>${emp['Bank Account']}</span></div>
+                    <div class="field"><label>PAN:</label><span>${emp['PAN Number']}</span></div>
+                    <div class="field"><label>Pay Date:</label><span>${emp['Payment Date']}</span></div>
+                </div>
+                <table class="payslip-table">
+                    <thead><tr><th>Earnings</th><th style="text-align:right">Amount</th><th>Deductions</th><th style="text-align:right">Amount</th></tr></thead>
+                    <tbody>
+                        <tr><td>Basic Salary</td><td style="text-align:right">${formatCurrency(emp['Basic Salary'])}</td><td>PF Deduction</td><td style="text-align:right">${formatCurrency(emp['PF Deduction'])}</td></tr>
+                        <tr><td>HRA</td><td style="text-align:right">${formatCurrency(emp['HRA'])}</td><td>ESI Deduction</td><td style="text-align:right">${formatCurrency(emp['ESI Deduction'])}</td></tr>
+                        <tr><td>Transport Allowance</td><td style="text-align:right">${formatCurrency(emp['Transport Allowance'])}</td><td>Professional Tax</td><td style="text-align:right">${formatCurrency(emp['Professional Tax'])}</td></tr>
+                        <tr><td>Medical Allowance</td><td style="text-align:right">${formatCurrency(emp['Medical Allowance'])}</td><td>Income Tax</td><td style="text-align:right">${formatCurrency(emp['Income Tax'])}</td></tr>
+                        <tr><td>Special Allowance</td><td style="text-align:right">${formatCurrency(emp['Special Allowance'])}</td><td></td><td></td></tr>
+                        <tr class="total-row"><td><strong>Gross Earnings</strong></td><td style="text-align:right"><strong>${formatCurrency(emp['Gross Earnings'])}</strong></td><td><strong>Total Deductions</strong></td><td style="text-align:right"><strong>${formatCurrency(emp['Total Deductions'])}</strong></td></tr>
+                    </tbody>
+                </table>
+                <div class="payslip-net">Net Pay: <span>${formatCurrency(emp['Net Pay'])}</span></div>
+            </div>
+            <div style="margin-top:16px; text-align:center;">
+                <button class="btn btn-primary" onclick="downloadPayslip(${payrollData.indexOf(Object.values(emp).length ? payrollData.find(r => r[0] === emp['Employee ID']) : [])})">Download PDF</button>
+            </div>`;
+        }
+
+        function closeModal() { document.getElementById('payslipModal').classList.remove('active'); }
+
+        function generatePDF(idx) {
+            const emp = getEmployeeData(idx);
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            let y = 15;
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyInfo['Company Name'] || 'COMPANY NAME', 105, y, { align: 'center' });
+            y += 7;
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const addr = [companyInfo['Address Line 1'], companyInfo['Address Line 2'], companyInfo['Address Line 3']].filter(Boolean).join(', ');
+            if (addr) { doc.text(addr, 105, y, { align: 'center' }); y += 5; }
+            const pdfContact = [];
+            if (companyInfo['Phone']) pdfContact.push(`Phone: ${companyInfo['Phone']}`);
+            if (companyInfo['Email']) pdfContact.push(`Email: ${companyInfo['Email']}`);
+            if (pdfContact.length) { doc.text(pdfContact.join(' | '), 105, y, { align: 'center' }); y += 5; }
+            const pdfReg = [];
+            if (companyInfo['CIN']) pdfReg.push(`CIN: ${companyInfo['CIN']}`);
+            if (companyInfo['GSTIN']) pdfReg.push(`GSTIN: ${companyInfo['GSTIN']}`);
+            if (pdfReg.length) { doc.text(pdfReg.join(' | '), 105, y, { align: 'center' }); y += 5; }
+            y += 3;
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Pay Slip - ${emp['Pay Period'] || 'N/A'}`, 105, y, { align: 'center' });
+            y += 4;
+            doc.line(15, y, 195, y);
+
+            y += 8;
+            doc.setFontSize(10);
+            const info = [
+                ['Employee ID', emp['Employee ID'], 'Department', emp['Department']],
+                ['Name', emp['Employee Name'], 'Designation', emp['Designation']],
+                ['Bank A/C', emp['Bank Account'], 'PAN', emp['PAN Number']],
+                ['Pay Date', emp['Payment Date'], '', '']
+            ];
+            info.forEach(row => {
+                doc.setFont('helvetica', 'bold');
+                doc.text(row[0] + ':', 15, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(String(row[1]), 50, y);
+                if (row[2]) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(row[2] + ':', 110, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(String(row[3]), 145, y);
+                }
+                y += 7;
+            });
+
+            y += 5;
+            doc.setFont('helvetica', 'bold');
+            doc.setFillColor(240, 240, 240);
+            doc.rect(15, y - 4, 85, 7, 'F');
+            doc.rect(105, y - 4, 85, 7, 'F');
+            doc.text('Earnings', 15, y);
+            doc.text('Amount', 80, y, { align: 'right' });
+            doc.text('Deductions', 105, y);
+            doc.text('Amount', 175, y, { align: 'right' });
+            y += 8;
+
+            doc.setFont('helvetica', 'normal');
+            const earnings = [['Basic Salary', emp['Basic Salary']], ['HRA', emp['HRA']], ['Transport', emp['Transport Allowance']], ['Medical', emp['Medical Allowance']], ['Special', emp['Special Allowance']]];
+            const deductions = [['PF', emp['PF Deduction']], ['ESI', emp['ESI Deduction']], ['Prof. Tax', emp['Professional Tax']], ['Income Tax', emp['Income Tax']]];
+
+            const maxRows = Math.max(earnings.length, deductions.length);
+            for (let i = 0; i < maxRows; i++) {
+                if (earnings[i]) { doc.text(earnings[i][0], 15, y); doc.text(formatCurrency(earnings[i][1]), 80, y, { align: 'right' }); }
+                if (deductions[i]) { doc.text(deductions[i][0], 105, y); doc.text(formatCurrency(deductions[i][1]), 175, y, { align: 'right' }); }
+                y += 6;
+            }
+
+            y += 4;
+            doc.line(15, y, 195, y);
+            y += 7;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Gross Earnings:', 15, y);
+            doc.text(formatCurrency(emp['Gross Earnings']), 80, y, { align: 'right' });
+            doc.text('Total Deductions:', 105, y);
+            doc.text(formatCurrency(emp['Total Deductions']), 175, y, { align: 'right' });
+
+            y += 12;
+            doc.setFillColor(30, 58, 95);
+            doc.rect(15, y - 5, 180, 12, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(12);
+            doc.text(`Net Pay: ${formatCurrency(emp['Net Pay'])}`, 105, y + 2, { align: 'center' });
+
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(8);
+            doc.text('This is a system-generated payslip and does not require a signature.', 105, 280, { align: 'center' });
+
+            return doc;
+        }
+
+        function getPayslipFilename(idx) {
+            const emp = getEmployeeData(idx);
+            return `Payslip_${emp['Employee ID']}_${(emp['Pay Period'] || '').replace(/\s/g, '_')}.pdf`;
+        }
+
+        function downloadPayslip(idx) {
+            const doc = generatePDF(idx);
+            const emp = getEmployeeData(idx);
+            doc.save(getPayslipFilename(idx));
+            showToast(`PDF downloaded for ${emp['Employee Name']}`);
+        }
+
+        function getPDFBase64(idx) {
+            const doc = generatePDF(idx);
+            return doc.output('datauristring').split(',')[1];
+        }
+
+        function downloadAllPayslips() {
+            payrollData.forEach((_, idx) => {
+                setTimeout(() => downloadPayslip(idx), idx * 300);
+            });
+            showToast(`Downloading ${payrollData.length} payslip PDFs...`);
+        }
+
+        function openSendModal(idx) {
+            const emp = getEmployeeData(idx);
+            document.getElementById('sendModalBody').innerHTML = `
+                <div class="send-form">
+                    <div class="form-group">
+                        <label>To (Email)</label>
+                        <input type="email" id="sendEmail" value="${emp['Email']}" />
+                    </div>
+                    <div class="form-group">
+                        <label>Subject</label>
+                        <input type="text" id="sendSubject" value="Your Payslip for ${emp['Pay Period'] || 'Current Month'}" />
+                    </div>
+                    <div class="form-group">
+                        <label>Message (HTML payslip will be sent as email body)</label>
+                        <textarea id="sendMessage">Dear ${emp['Employee Name']},\n\nPlease find your payslip for ${emp['Pay Period'] || 'the current month'} below.\n\nNet Pay: ${formatCurrency(emp['Net Pay'])}\n\nRegards,\n${smtpConfig['Sender Name'] || 'HR Department'}</textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button class="btn btn-success" onclick="sendPayslipEmail(${idx})">Send Email</button>
+                        <span id="sendStatus" style="font-size:13px; color:#64748b;"></span>
+                    </div>
+                    ${!smtpConfig['SMTP User'] || !smtpConfig['SMTP Password'] ? '<p style="margin-top:12px; color:#dc2626; font-size:12px;">Gmail credentials not found. Add your Gmail &amp; App Password in the "Company Details" sheet.</p>' : '<p style="margin-top:12px; color:#64748b; font-size:12px;">Sending via Gmail (' + smtpConfig['SMTP User'] + '). Make sure email_server.py is running.</p>'}
+                </div>`;
+            document.getElementById('sendModal').classList.add('active');
+        }
+
+        function closeSendModal() { document.getElementById('sendModal').classList.remove('active'); }
+
+        function generateEmailHTML(emp) {
+            const addr = [companyInfo['Address Line 1'], companyInfo['Address Line 2'], companyInfo['Address Line 3']].filter(Boolean).join(', ');
+            let headerExtra = '';
+            if (addr) headerExtra += `<p style="margin:2px 0;opacity:0.85;font-size:12px;">${addr}</p>`;
+            if (companyInfo['Phone']) headerExtra += `<p style="margin:2px 0;opacity:0.85;font-size:12px;">Phone: ${companyInfo['Phone']}</p>`;
+            return `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:650px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <div style="background:#1e3a5f;color:white;padding:20px;text-align:center;">
+                    ${companyInfo['Logo URL'] ? `<img src="${companyInfo['Logo URL']}" style="max-height:50px;margin-bottom:8px;" alt="Logo">` : ''}
+                    <h2 style="margin:0;font-size:20px;">${companyInfo['Company Name']}</h2>
+                    ${headerExtra}
+                    <p style="margin:8px 0 0;font-size:14px;font-weight:600;">Pay Slip - ${emp['Pay Period']||'N/A'}</p>
+                </div>
+                <div style="padding:24px;">
+                    <table style="width:100%;font-size:13px;margin-bottom:16px;"><tr><td><strong>Employee ID:</strong> ${emp['Employee ID']}</td><td><strong>Name:</strong> ${emp['Employee Name']}</td></tr><tr><td><strong>Department:</strong> ${emp['Department']}</td><td><strong>Designation:</strong> ${emp['Designation']}</td></tr><tr><td><strong>Bank A/C:</strong> ${emp['Bank Account']}</td><td><strong>PAN:</strong> ${emp['PAN Number']}</td></tr></table>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+                        <tr style="background:#f8fafc;"><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Earnings</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:right;">Amount</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Deductions</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:right;">Amount</th></tr>
+                        <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;">Basic Salary</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Basic Salary'])}</td><td style="padding:6px 8px;border:1px solid #e2e8f0;">PF Deduction</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['PF Deduction'])}</td></tr>
+                        <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;">HRA</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['HRA'])}</td><td style="padding:6px 8px;border:1px solid #e2e8f0;">ESI</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['ESI Deduction'])}</td></tr>
+                        <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;">Transport</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Transport Allowance'])}</td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Professional Tax</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Professional Tax'])}</td></tr>
+                        <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;">Medical</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Medical Allowance'])}</td><td style="padding:6px 8px;border:1px solid #e2e8f0;">Income Tax</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Income Tax'])}</td></tr>
+                        <tr><td style="padding:6px 8px;border:1px solid #e2e8f0;">Special</td><td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Special Allowance'])}</td><td style="padding:6px 8px;border:1px solid #e2e8f0;"></td><td style="padding:6px 8px;border:1px solid #e2e8f0;"></td></tr>
+                        <tr style="background:#f0fdf4;font-weight:bold;"><td style="padding:8px;border:1px solid #e2e8f0;">Gross Earnings</td><td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Gross Earnings'])}</td><td style="padding:8px;border:1px solid #e2e8f0;">Total Deductions</td><td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">${formatCurrency(emp['Total Deductions'])}</td></tr>
+                    </table>
+                    <div style="background:#1e3a5f;color:white;text-align:center;padding:14px;border-radius:6px;font-size:16px;">Net Pay: <strong style="font-size:20px;">${formatCurrency(emp['Net Pay'])}</strong></div>
+                    <p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:16px;">This is a system-generated payslip and does not require a signature.</p>
+                </div>
+            </div>`;
+        }
+
+        async function sendPayslipEmail(idx) {
+            const emp = getEmployeeData(idx);
+            const email = document.getElementById('sendEmail').value;
+            const subject = document.getElementById('sendSubject').value;
+            const statusEl = document.getElementById('sendStatus');
+
+            if (!smtpConfig['SMTP User'] || !smtpConfig['SMTP Password']) {
+                showToast('Gmail credentials missing. Update "Company Details" sheet in Excel.', 'error');
+                return;
+            }
+
+            statusEl.textContent = 'Generating PDF & sending...';
+            statusEl.style.color = '#2d5a87';
+
+            try {
+                const pdfBase64 = getPDFBase64(idx);
+                const filename = getPayslipFilename(idx);
+
+                const response = await fetch('http://localhost:3000/send-payslip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        smtp: smtpConfig,
+                        to: email,
+                        subject: subject,
+                        body: generateEmailHTML(emp),
+                        pdfBase64: pdfBase64,
+                        pdfFilename: filename
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    statusEl.textContent = 'Sent with PDF attached!';
+                    statusEl.style.color = '#059669';
+                    showToast(`Payslip sent to ${emp['Employee Name']} (${email})`);
+                    setTimeout(() => closeSendModal(), 1500);
+                } else {
+                    statusEl.textContent = 'Failed: ' + result.error;
+                    statusEl.style.color = '#dc2626';
+                    showToast('Failed: ' + result.error, 'error');
+                }
+            } catch (err) {
+                statusEl.textContent = 'Email server not running';
+                statusEl.style.color = '#dc2626';
+                showToast('Start email server first: python email_server.py', 'error');
+            }
+        }
+
+        function sendAllPayslips() {
+            if (!smtpConfig['SMTP User'] || !smtpConfig['SMTP Password']) { showToast('Gmail credentials missing. Update "Company Details" sheet.', 'error'); return; }
+            if (!confirm(`Send payslips to all ${payrollData.length} employees via Gmail with PDF attached?`)) return;
+            sendBulkPayslips(payrollData.map((_, idx) => idx));
+        }
+
+        async function sendBulkPayslips(indices) {
+            let sent = 0, failed = 0;
+            showToast(`Sending ${indices.length} payslips...`);
+            for (const idx of indices) {
+                const emp = getEmployeeData(idx);
+                try {
+                    const pdfBase64 = getPDFBase64(idx);
+                    const filename = getPayslipFilename(idx);
+
+                    const response = await fetch('http://localhost:3000/send-payslip', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            smtp: smtpConfig,
+                            to: emp['Email'],
+                            subject: `Your Payslip for ${emp['Pay Period'] || 'Current Month'}`,
+                            body: generateEmailHTML(emp),
+                            pdfBase64: pdfBase64,
+                            pdfFilename: filename
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.success) sent++; else failed++;
+                } catch { failed++; }
+            }
+            showToast(`Done! Sent: ${sent}, Failed: ${failed}${failed > 0 ? ' (check Gmail credentials or server)' : ''}`);
+        }
+
+        function resetData() {
+            if (!confirm('Clear all loaded data?')) return;
+            payrollData = [];
+            headers = [];
+            document.getElementById('dataSection').classList.add('hidden');
+            document.getElementById('uploadSection').classList.remove('hidden');
+            fileInput.value = '';
+        }
+
+        function formatCurrency(val) {
+            const num = Number(val) || 0;
+            return '₹' + num.toLocaleString('en-IN');
+        }
+
+        function toggleSelect(idx, checkbox) {
+            if (checkbox.checked) {
+                selectedEmployees.add(idx);
+            } else {
+                selectedEmployees.delete(idx);
+            }
+            checkbox.closest('tr').classList.toggle('row-selected', checkbox.checked);
+            updateSelectionBar();
+        }
+
+        function toggleSelectAll(checkbox) {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            rowCheckboxes.forEach(cb => {
+                const idx = parseInt(cb.dataset.idx);
+                cb.checked = checkbox.checked;
+                cb.closest('tr').classList.toggle('row-selected', checkbox.checked);
+                if (checkbox.checked) {
+                    selectedEmployees.add(idx);
+                } else {
+                    selectedEmployees.delete(idx);
+                }
+            });
+            updateSelectionBar();
+        }
+
+        function updateSelectionBar() {
+            const bar = document.getElementById('selectionBar');
+            const count = selectedEmployees.size;
+            document.getElementById('selectedCount').textContent = count;
+            if (count > 0) {
+                bar.classList.remove('hidden');
+            } else {
+                bar.classList.add('hidden');
+            }
+            const selectAllCb = document.getElementById('selectAll');
+            if (selectAllCb) {
+                selectAllCb.checked = count === payrollData.length && count > 0;
+                selectAllCb.indeterminate = count > 0 && count < payrollData.length;
+            }
+        }
+
+        function clearSelection() {
+            selectedEmployees.clear();
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.checked = false;
+                cb.closest('tr').classList.remove('row-selected');
+            });
+            document.getElementById('selectAll').checked = false;
+            updateSelectionBar();
+        }
+
+        function downloadSelectedPayslips() {
+            if (selectedEmployees.size === 0) { showToast('No employees selected', 'error'); return; }
+            let delay = 0;
+            selectedEmployees.forEach(idx => {
+                setTimeout(() => downloadPayslip(idx), delay);
+                delay += 300;
+            });
+            showToast(`Downloading ${selectedEmployees.size} payslip PDF(s)...`);
+        }
+
+        function sendSelectedPayslips() {
+            if (selectedEmployees.size === 0) { showToast('No employees selected', 'error'); return; }
+            if (!smtpConfig['SMTP Host'] || !smtpConfig['SMTP Password']) { showToast('SMTP credentials missing. Update "Company Details" sheet.', 'error'); return; }
+            if (!confirm(`Send payslips to ${selectedEmployees.size} selected employee(s)?`)) return;
+            sendBulkPayslips([...selectedEmployees]);
+        }
+
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast show' + (type === 'error' ? ' error' : '');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            fetch('http://localhost:3000/health', { method: 'POST' })
+                .then(r => {
+                    statusEl.innerHTML = '&#9679; Email Server Running';
+                    statusEl.style.color = '#4ade80';
+                })
+                .catch(() => {
+                    statusEl.innerHTML = '&#9679; Email Server Offline';
+                    statusEl.style.color = '#f87171';
+                });
+        }
+        checkServerStatus();
+        setInterval(checkServerStatus, 10000);
+    </script>
+</body>
+</html>
